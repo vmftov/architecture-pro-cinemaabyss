@@ -1,0 +1,55 @@
+@startuml CinemaAbyss_С4_Container_ToBe
+title Cinema Abyss - Диаграмма контейнеров - TO-BE (через 2 месяца)
+
+top to bottom direction
+
+!define RELATIVE_INCLUDE .
+!include ./C4_Container.puml
+'!includeurl https://raw.githubusercontent.com/RicardoNiepel/C4-PlantUML/master/C4_Container.puml
+
+Person(client, "Пользователь", "Пользуется услугами системы")
+
+System_Boundary(cinema_abyss_system, "Компания Cinema Abyss") {  
+    Container(kafka, "Kafka", "Kafka", "Брокер сообщений")
+
+    Container(client_web_app, "Web-приложение пользователя", "React, JS", "")
+
+    Container(go_monolith, "Монолит", "Go", "Управляет: Пользователи, Платежи, Подписки")
+    Container(movies_db, "БД метаданных фильмов", "PostgreSQL", "Хранит метеданные фильмов, рейтинги, жанры")
+    Container(monolith_db, "БД", "PostgreSQL", "Хранит данные пользователей, платежей, подписок")
+
+    Container(movies_service, "Movies Service", "Go", "Управляет: Метаданные фильмов, Рейтинги, Жанры")
+
+    Container(events_service, "Events Service", "Go", "Обрабатывает коммуникацию между сервисами на основе событий")
+
+    Container(api_gateway, "Proxy Service (API Gateway)", "Go", "Для обеспечения Strangler Fig")
+}
+
+System_Ext(recommend_service, "Рекоммендательная система", "Обобщенный хаб, связывающий систему и устройства")
+System_Ext(ext_payment_service, "Платёжная система", "Предоставляет услуги по выполнению платежей согласно законодательству")
+System_Ext(ext_online_movies, "Онлайн-кинотеатр", "")
+System_Ext(s3_service, "S3", "Хранит фильмы")
+
+Lay_L(movies_service, events_service)
+Lay_R(movies_service, go_monolith)
+
+
+Rel(client, client_web_app, "", "")
+Rel(client_web_app, api_gateway, "", "")
+
+Rel(api_gateway, go_monolith, "Запросы/команды пользователей, платежей, подписок", "")
+Rel(api_gateway, movies_service, "Запросы/команды метаданных фильмов", "")
+Rel(api_gateway, events_service, "Тестовые запросы для MVP", "")
+
+Rel(events_service, kafka, "Тестовые produce/consume для MVP", "")
+
+Rel_D(go_monolith, ext_payment_service, "Выполнение платежа", "")
+Rel_D(go_monolith, monolith_db, "Управление данными", "")
+Rel(go_monolith, s3_service, "Стриминг фильмов", "")
+Rel(go_monolith, movies_service, "Чтение метаданных через Anti Corruption Layer", "")
+Rel(go_monolith, recommend_service, "Получение рекомендаций", "")
+Rel(go_monolith, ext_online_movies, "Получение данных новых видео", "")
+
+Rel(movies_service, movies_db, "Управление данными", "")
+
+@enduml
