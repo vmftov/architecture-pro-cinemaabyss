@@ -2,9 +2,8 @@
 
 ## Задание 1
 
-1. Спроектируйте to be архитектуру КиноБездны, разделив всю систему на отдельные домены и организовав интеграционное взаимодействие и единую точку вызова сервисов.
-Результат представьте в виде контейнерной диаграммы в нотации С4.
-Добавьте ссылку на файл в этот шаблон
+Cinema Abyss - Диаграмма контейнеров - TO-BE (через 2 месяца)
+
 ![Cinema Abyss - Диаграмма контейнеров - TO-BE (через 2 месяца)](./arch/to-be-container.png)
 
 [PUML: Cinema Abyss - Диаграмма контейнеров - TO-BE (через 2 месяца)](./arch/to-be-container.puml)
@@ -12,54 +11,103 @@
 
 ## Задание 2
 
-### 1. Proxy
-Команда КиноБездны уже выделила сервис метаданных о фильмах movies и вам необходимо реализовать бесшовный переход с применением паттерна Strangler Fig в части реализации прокси-сервиса (API Gateway), с помощью которого можно будет постепенно переключать траффик, используя фиче-флаг.
+Proxy и events сервисы написаны на языке golang.
+
+В docker-compose.yml добавлены healthcheck для kafka и зависимости для kafka и БД (service_healthy) для сервисов monolith и movies-service, иначе они запускались слишком рано и падали.
+
+**Результаты выполнения тестов**
+
+![Результаты выполнения тестов](./images/task-2-local-postman-tests.png)
+
+**Результаты запросов curl**
+
+```
+MAXIM@LAPTOP-123 MINGW64 /
+$ curl http://localhost:8000/api/movies
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  1566  100  1566    0     0   194k      0 --:--:-- --:--:-- --:--:--  218k[{"id":1,"title":"The Shawshank Redemption","description":"Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.","genres":["Drama"],"rating":9.3},{"id":2,"title":"The Godfather","description":"The aging patriarch of an organized crime dynasty transfers control of his clandestine empire to his reluctant son.","genres":["Crime","Drama"],"rating":9.2},{"id":3,"title":"The Dark Knight","description":"When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.","genres":["Action","Crime","Drama"],"rating":9},{"id":4,"title":"Pulp Fiction","description":"The lives of two mob hitmen, a boxer, a gangster and his wife, and a pair of diner bandits intertwine in four tales of violence and redemption.","genres":["Crime","Drama"],"rating":8.9},{"id":5,"title":"Forrest Gump","description":"The presidencies of Kennedy and Johnson, the Vietnam War, the Watergate scandal and other historical events unfold from the perspective of an Alabama man with an IQ of 75, whose only desire is to be reunited with his childhood sweetheart.","genres":["Drama","Romance"],"rating":8.8},{"id":6,"title":"Test Movie 496","description":"A test movie created by automated tests","genres":["Action","Drama"],"rating":4.5},{"id":7,"title":"Microservice Test Movie 769","description":"A test movie created by automated tests for the microservice","genres":["Sci-Fi","Thriller"],"rating":4.8}]
 
 
-Реализуйте сервис на любом языке программирования в ./src/microservices/proxy.
-Конфигурация для запуска сервиса через docker-compose уже добавлена
-```yaml
-  proxy-service:
-    build:
-      context: ./src/microservices/proxy
-      dockerfile: Dockerfile
-    container_name: cinemaabyss-proxy-service
-    depends_on:
-      - monolith
-      - movies-service
-      - events-service
-    ports:
-      - "8000:8000"
-    environment:
-      PORT: 8000
-      MONOLITH_URL: http://monolith:8080
-      #монолит
-      MOVIES_SERVICE_URL: http://movies-service:8081 #сервис movies
-      EVENTS_SERVICE_URL: http://events-service:8082 
-      GRADUAL_MIGRATION: "true" # вкл/выкл простого фиче-флага
-      MOVIES_MIGRATION_PERCENT: "50" # процент миграции
-    networks:
-      - cinemaabyss-network
+MAXIM@LAPTOP-123 MINGW64 /
+$ curl http://localhost:8000/api/users
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   238  100   238    0     0  12936      0 --:--:-- --:--:-- --:--:-- 13222[{"id":1,"username":"user1","email":"user1@example.com"},{"id":2,"username":"user2","email":"user2@example.com"},{"id":3,"username":"user3","email":"user3@example.com"},{"id":4,"username":"testuser703","email":"testuser379@example.com"}]
+
+
+MAXIM@LAPTOP-123 MINGW64 /
+$ curl http://localhost:8000/health
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    30  100    30    0     0   8145      0 --:--:-- --:--:-- --:--:-- 10000Strangler Fig Proxy is healthy
+
 ```
 
-- После реализации запустите postman тесты - они все должны быть зеленые.
-- Отправьте запросы к API Gateway:
-   ```bash
-   curl http://localhost:8000/api/movies
-   ```
-- Протестируйте постепенный переход, изменив переменную окружения MOVIES_MIGRATION_PERCENT в файле docker-compose.yml.
+**Логи docker для случая MOVIES_MIGRATION_PERCENT: "90"**
 
-### 2. Kafka
- Вам как архитектуру нужно также проверить гипотезу насколько просто реализовать применение Kafka в данной архитектуре.
+```
+cinemaabyss-kafka-ui        | 2026-07-16 19:52:02,298 DEBUG [parallel-5] c.p.k.u.s.ClustersStatisticsScheduler: Metrics updated for cluster: cinemaabyss
+cinemaabyss-proxy-service   | 2026/07/16 19:52:10 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:11 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:12 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:12 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:13 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:14 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:15 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-monolith        | get movies from monolith
+cinemaabyss-proxy-service   | 2026/07/16 19:52:15 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:16 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:17 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-monolith        | get movies from monolith
+cinemaabyss-proxy-service   | 2026/07/16 19:52:18 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:18 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:19 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+cinemaabyss-proxy-service   | 2026/07/16 19:52:20 GET /api/movies from 172.21.0.1:46384
+cinemaabyss-movies-service  | get movies from movies
+```
 
-Для этого нужно сделать MVP сервис events, который будет при вызове API создавать и сам же читать сообщения в топике Kafka.
+**Скрины из Kafka UI**
 
-    - Разработайте сервис на любом языке программирования с consumer'ами и producer'ами.
-    - Реализуйте простой API, при вызове которого будут создаваться события User/Payment/Movie и обрабатываться внутри сервиса с записью в лог
-    - Добавьте в docker-compose новый сервис, kafka там уже есть
+Топики:
 
-Необходимые тесты для проверки этого API вызываются при запуске npm run test:local из папки tests/postman 
-Приложите скриншот тестов и скриншот состояния топиков Kafka http://localhost:8090 
+![kafka-topics](images/task-2-kafka-topics.png)
+
+Топик movie-events:
+
+![movie-events](images/task-2-kafka-topic-movie-events.png)
+
+Топик user-events:
+
+![user-events](images/task-2-kafka-topic-user-events.png)
+
+Топик user-events - сообщения:
+
+![user-events-messages](images/task-2-kafka-topic-user-events-messages.png)
+
+Топик user-events - консьюмер:
+
+![user-events-consumers](images/task-2-kafka-topic-user-events-consumer-info.png)
+
+Топик payment-events:
+
+![payment-events](images/task-2-kafka-topic-payment-events.png)
+
+Консьюмеры:
+
+![kafka-consumers](images/task-2-kafka-consumers.png)
+
 
 
 ## Задание 3
