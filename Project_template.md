@@ -112,12 +112,6 @@ cinemaabyss-movies-service  | get movies from movies
 
 ## Задание 3
 
-Команда начала переезд в Kubernetes для лучшего масштабирования и повышения надежности. 
-Вам, как архитектору осталось самое сложное:
- - реализовать CI/CD для сборки прокси сервиса
- - реализовать необходимые конфигурационные файлы для переключения трафика.
-
-
 ### CI/CD
 
 **Скриншот сборки**
@@ -130,167 +124,32 @@ cinemaabyss-movies-service  | get movies from movies
 
 ### Proxy в Kubernetes
 
-#### Шаг 1
-Для деплоя в kubernetes необходимо залогиниться в docker registry Github'а.
-1. Создайте Personal Access Token (PAT) https://github.com/settings/tokens . Создавайте class с правом read:packages
-2. В src/kubernetes/*.yaml (event-service, monolith, movies-service и proxy-service)  отредактируйте путь до ваших образов 
-```bash
- spec:
-      containers:
-      - name: events-service
-        image: ghcr.io/ваш логин/имя репозитория/events-service:latest
-```
-3. Добавьте в секрет src/kubernetes/dockerconfigsecret.yaml в поле
-```bash
- .dockerconfigjson: значение в base64 файла ~/.docker/config.json
-```
+Удалил из ingress.yaml - path: /api/events и все тесты выполнились.
 
-4. Если в ~/.docker/config.json нет значения для аутентификации
-```json
-{
-        "auths": {
-                "ghcr.io": {
-                       тут пусто
-                }
-        }
-}
+**Скриншот тестов** 
+
+![kube-tests-2](images/task-3-kube-tests-2.png)
+
+**Логи events-service (kubectl -n cinemaabyss logs events-service-67cdddb99c-9mvd2)**
+
 ```
-то выполните 
-
-и добавьте
-
-```json 
- "auth": "имя пользователя:токен в base64"
+2026/07/17 00:00:27 GET /api/events/health from 10.244.0.1:35348
+2026/07/17 00:00:37 GET /api/events/health from 10.244.0.1:53608
+2026/07/17 00:00:42 GET /api/events/health from 10.244.0.10:32866
+2026/07/17 00:00:42 POST /api/events/movie from 10.244.0.10:32866
+Получено сообщение от Kafka: {"id":"5c8dd260-7191-44e2-8f9b-a9f8bd21a7da","type":"movie","timestamp":"2026-07-17T00:00:42.763881482Z","payload":{"action":"viewed","movie_id":12,"title":"Test Movie Event","user_id":7}}
+2026/07/17 00:00:42 POST /api/events/user from 10.244.0.10:32866
+Получено сообщение от Kafka: {"id":"37989b9e-bc6d-4d0b-8aa3-b747b2f222c5","type":"user","timestamp":"2026-07-17T00:00:42.970061872Z","payload":{"action":"logged_in","timestamp":"2026-07-17T00:00:42.951Z","user_id":7,"username":"testuser"}}
+2026/07/17 00:00:43 POST /api/events/payment from 10.244.0.10:32866
+Получено сообщение от Kafka: {"id":"e994e876-22b2-4fb5-a170-dfe3053bd829","type":"payment","timestamp":"2026-07-17T00:00:43.191918769Z","payload":{"amount":9.99,"method_type":"credit_card","payment_id":7,"status":"completed","timestamp":"2026-07-17T00:00:43.173Z","user_id":7}}
+2026/07/17 00:00:46 GET /api/events/health from 10.244.0.1:40894
+2026/07/17 00:00:47 GET /api/events/health from 10.244.0.1:40900
+2026/07/17 00:00:57 GET /api/events/health from 10.244.0.1:40220
 ```
 
-Чтобы получить значение в base64 можно выполнить команду
-```bash
- echo -n ваш_логин:ваш_токен | base64
-```
+**Скриншот вывода при вызове https://cinemaabyss.example.com/api/movies после выполнения тестов**
 
-После заполнения config.json, также прогоните содержимое через base64
-
-```bash
-cat .docker/config.json | base64
-```
-
-и полученное значение добавляем в
-
-```bash
- .dockerconfigjson: значение в base64 файла ~/.docker/config.json
-```
-
-#### Шаг 2
-
-  Доработайте src/kubernetes/event-service.yaml и src/kubernetes/proxy-service.yaml
-
-  - Необходимо создать Deployment и Service 
-  - Доработайте ingress.yaml, чтобы можно было с помощью тестов проверить создание событий
-  - Выполните дальшейшие шаги для поднятия кластера:
-
-  1. Создайте namespace:
-  ```bash
-  kubectl apply -f src/kubernetes/namespace.yaml
-  ```
-  2. Создайте секреты и переменные
-  ```bash
-  kubectl apply -f src/kubernetes/configmap.yaml
-  kubectl apply -f src/kubernetes/secret.yaml
-  kubectl apply -f src/kubernetes/dockerconfigsecret.yaml
-  kubectl apply -f src/kubernetes/postgres-init-configmap.yaml
-  ```
-
-  3. Разверните базу данных:
-  ```bash
-  kubectl apply -f src/kubernetes/postgres.yaml
-  ```
-
-  На этом этапе если вызвать команду
-  ```bash
-  kubectl -n cinemaabyss get pod
-  ```
-  Вы увидите
-
-  NAME         READY   STATUS    
-  postgres-0   1/1     Running   
-
-  4. Разверните Kafka:
-  ```bash
-  kubectl apply -f src/kubernetes/kafka/kafka.yaml
-  ```
-
-  Проверьте, теперь должно быть запущено 3 пода, если что-то не так, то посмотрите логи
-  ```bash
-  kubectl -n cinemaabyss logs имя_пода (например - kafka-0)
-  ```
-
-  5. Разверните монолит:
-  ```bash
-  kubectl apply -f src/kubernetes/monolith.yaml
-  ```
-  6. Разверните микросервисы:
-  ```bash
-  kubectl apply -f src/kubernetes/movies-service.yaml
-  kubectl apply -f src/kubernetes/events-service.yaml
-  ```
-  7. Разверните прокси-сервис:
-  ```bash
-  kubectl apply -f src/kubernetes/proxy-service.yaml
-  ```
-
-  После запуска и поднятия подов вывод команды 
-  ```bash
-  kubectl -n cinemaabyss get pod
-  ```
-
-  Будет наподобие такого
-
-  NAME                              READY   STATUS    
-
-  events-service-7587c6dfd5-6whzx   1/1     Running  
-
-  kafka-0                           1/1     Running   
-
-  monolith-8476598495-wmtmw         1/1     Running  
-
-  movies-service-6d5697c584-4qfqs   1/1     Running  
-
-  postgres-0                        1/1     Running  
-
-  proxy-service-577d6c549b-6qfcv    1/1     Running  
-
-  zookeeper-0                       1/1     Running 
-
-  8. Добавим ingress
-
-  - добавьте аддон
-  ```bash
-  minikube addons enable ingress
-  ```
-  ```bash
-  kubectl apply -f src/kubernetes/ingress.yaml
-  ```
-  9. Добавьте в /etc/hosts
-  127.0.0.1 cinemaabyss.example.com
-
-  10. Вызовите
-  ```bash
-  minikube tunnel
-  ```
-  11. Вызовите https://cinemaabyss.example.com/api/movies
-  Вы должны увидеть вывод списка фильмов
-  Можно поэкспериментировать со значением   MOVIES_MIGRATION_PERCENT в src/kubernetes/configmap.yaml и убедится, что вызовы movies уходят полностью в новый сервис
-
-  12. Запустите тесты из папки tests/postman
-  ```bash
-   npm run test:kubernetes
-  ```
-  Часть тестов с health-чек упадет, но создание событий отработает.
-  Откройте логи event-service и сделайте скриншот обработки событий
-
-#### Шаг 3
-Добавьте сюда скриншота вывода при вызове https://cinemaabyss.example.com/api/movies и  скриншот вывода event-service после вызова тестов.
-
+![cinemaabyss-after-tests-output](images/task-3-cinemaabyss-after-tests-output-2.png)
 
 ## Задание 4
 Для простоты дальнейшего обновления и развертывания вам как архитектуру необходимо так же реализовать helm-чарты для прокси-сервиса и проверить работу 
