@@ -48,7 +48,7 @@ Rel_D(go_monolith, monolith_db, "Управление данными", "")
 Rel(go_monolith, s3_service, "Стриминг фильмов", "")
 Rel(go_monolith, movies_service, "Чтение метаданных через Anti Corruption Layer", "")
 Rel(go_monolith, recommend_service, "Получение рекомендаций", "")
-Rel(go_monolith, ext_online_movies, "Получение данных новых видео", "")
+Rel(go_monolith, ext_online_movies, "", "")
 
 Rel(movies_service, movies_db, "Управление данными", "")
 
